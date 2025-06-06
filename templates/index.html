@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vittavento Inventory System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        .table-warning {
+            background-color: #fff3cd !important;
+        }
+
+        .text-danger i {
+            margin-left: 5px;
+        }
+
+        #lowStockAlert {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+            max-width: 400px;
+        }
+
+        .scanner-container {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        #scanner-video {
+            width: 100%;
+            max-width: 400px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+        }
+
+        .list-group-sm .list-group-item {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Навигация -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-box-seam"></i> Vittavento Inventory
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/">
+                            <i class="bi bi-house"></i> Главная
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/low_stock">
+                            <i class="bi bi-exclamation-triangle"></i> Низкий остаток
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Панель уведомлений о низком остатке -->
+    <div class="alert alert-warning alert-dismissible fade show" id="lowStockAlert" style="display: none;">
+        <h5><i class="bi bi-exclamation-triangle"></i> Внимание! Низкий остаток товаров:</h5>
+        <ul id="lowStockList" class="mb-0">
+            <!-- Заполняется через JavaScript -->
+        </ul>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+
+    <!-- Основной контент -->
+    <div class="container mt-4">
+        <!-- Статистика -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Всего товаров</h5>
+                        <h2 class="mb-0" id="totalItems">0</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-warning text-dark">
+                    <div class="card-body">
+                        <h5 class="card-title">Низкий остаток</h5>
+                        <h2 class="mb-0" id="lowStock">0</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Приход сегодня</h5>
+                        <h2 class="mb-0" id="incomingToday">0</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-danger text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Расход сегодня</h5>
+                        <h2 class="mb-0" id="outgoingToday">0</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Сканер и поиск -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Сканер штрихкода</h5>
+
+                        <!-- Выбор операции для сканера -->
+                        <div class="btn-group w-100 mb-3" role="group">
+                            <input type="radio" class="btn-check" name="scanOperation" id="scanIncoming" value="incoming" checked>
+                            <label class="btn btn-outline-success" for="scanIncoming">
+                                <i class="bi bi-arrow-down"></i> Приход
+                            </label>
+
+                            <input type="radio" class="btn-check" name="scanOperation" id="scanOutgoing" value="outgoing">
+                            <label class="btn btn-outline-danger" for="scanOutgoing">
+                                <i class="bi bi-arrow-up"></i> Списание
+                            </label>
+                        </div>
+
+                        <div class="scanner-container">
+                            <video id="scanner-video" style="display: none;"></video>
+                            <canvas id="scanner-canvas" style="display: none;"></canvas>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary" id="startScanner">
+                                <i class="bi bi-camera"></i> Включить камеру
+                            </button>
+                            <button class="btn btn-danger" id="stopScanner" style="display: none;">
+                                <i class="bi bi-camera-off"></i> Выключить камеру
+                            </button>
+                        </div>
+
+                        <div class="mt-3">
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="manualBarcode"
+                                       placeholder="Или введите/отсканируйте штрихкод">
+                                <button class="btn btn-outline-secondary" type="button" id="manualBarcodeSubmit">
+                                    <i class="bi bi-search"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted">
+                                Режим: <span id="currentMode" class="fw-bold text-success">ПРИХОД</span>
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Быстрые действия</h5>
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addProductModal">
+                                <i class="bi bi-plus-circle"></i> Добавить товар
+                            </button>
+                            <button class="btn btn-primary" id="showOperations">
+                                <i class="bi bi-clock-history"></i> История операций
+                            </button>
+                            <button class="btn btn-warning" onclick="window.location.href='/low_stock'">
+                                <i class="bi bi-exclamation-triangle"></i> Товары с низким остатком
+                            </button>
+                        </div>
+
+                        <!-- Последние операции по сканеру -->
+                        <div class="mt-3" id="recentScans" style="display: none;">
+                            <h6>Последние сканирования:</h6>
+                            <ul class="list-group list-group-sm" id="recentScansList">
+                                <!-- Заполняется динамически -->
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Таблица товаров -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Товары на складе</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="productsTable">
+                        <thead>
+                            <tr>
+                                <th>Артикул</th>
+                                <th>Название</th>
+                                <th>Тип</th>
+                                <th>Количество</th>
+                                <th>Мин. остаток</th>
+                                <th>Штрихкод</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="productsTableBody">
+                            <!-- Заполняется через JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- История операций -->
+        <div class="card mt-4" id="operationsCard" style="display: none;">
+            <div class="card-header">
+                <h5 class="mb-0">История операций</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Дата/Время</th>
+                                <th>Тип</th>
+                                <th>Товар</th>
+                                <th>Количество</th>
+                                <th>Пользователь</th>
+                            </tr>
+                        </thead>
+                        <tbody id="operationsTableBody">
+                            <!-- Заполняется через JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно добавления товара -->
+    <div class="modal fade" id="addProductModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Добавить товар</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="addProductForm">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="article" class="form-label">Артикул *</label>
+                            <input type="text" class="form-control" id="article" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="name" class="form-label">Название *</label>
+                            <input type="text" class="form-control" id="name" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="type" class="form-label">Тип *</label>
+                            <select class="form-control" id="type" required>
+                                <option value="">Выберите тип</option>
+                                <option value="Фурнитура">Фурнитура</option>
+                                <option value="Профиль">Профиль</option>
+                                <option value="Уплотнитель">Уплотнитель</option>
+                                <option value="Стекло">Стекло</option>
+                                <option value="Другое">Другое</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="barcode" class="form-label">Штрихкод *</label>
+                            <input type="text" class="form-control" id="barcode" required>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="quantity" class="form-label">Количество</label>
+                                    <input type="number" class="form-control" id="quantity" value="0" min="0">
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="min_quantity" class="form-label">
+                                        Минимальный остаток
+                                        <i class="bi bi-info-circle" data-bs-toggle="tooltip"
+                                           title="При достижении этого количества товар будет помечен как заканчивающийся"></i>
+                                    </label>
+                                    <input type="number" class="form-control" id="min_quantity"
+                                           value="10" min="0" placeholder="10">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="submit" class="btn btn-primary">Добавить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно редактирования товара -->
+    <div class="modal fade" id="editProductModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Редактировать товар</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="editProductForm">
+                    <div class="modal-body">
+                        <input type="hidden" id="edit_product_id">
+
+                        <div class="mb-3">
+                            <label class="form-label">Артикул</label>
+                            <input type="text" class="form-control" id="edit_article" readonly>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Штрихкод</label>
+                            <input type="text" class="form-control" id="edit_barcode" readonly>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="edit_name" class="form-label">Название *</label>
+                            <input type="text" class="form-control" id="edit_name" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="edit_type" class="form-label">Тип *</label>
+                            <select class="form-control" id="edit_type" required>
+                                <option value="Фурнитура">Фурнитура</option>
+                                <option value="Профиль">Профиль</option>
+                                <option value="Уплотнитель">Уплотнитель</option>
+                                <option value="Стекло">Стекло</option>
+                                <option value="Другое">Другое</option>
+                            </select>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Текущий остаток</label>
+                                    <input type="number" class="form-control" id="edit_quantity" readonly>
+                                    <small class="text-muted">Изменяется через приход/списание</small>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="edit_min_quantity" class="form-label">
+                                        Минимальный остаток *
+                                        <i class="bi bi-info-circle" data-bs-toggle="tooltip"
+                                           title="При достижении этого количества товар будет помечен как заканчивающийся"></i>
+                                    </label>
+                                    <input type="number" class="form-control" id="edit_min_quantity"
+                                           min="0" required>
+                                    <div id="stockWarning" class="alert alert-warning mt-2" style="display: none;">
+                                        <small><i class="bi bi-exclamation-triangle"></i> Текущий остаток ниже минимального!</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно операции -->
+    <div class="modal fade" id="operationModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="operationModalTitle">Операция</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="operationForm">
+                    <div class="modal-body">
+                        <input type="hidden" id="operation_item_id">
+                        <input type="hidden" id="operation_type">
+
+                        <div class="alert alert-info">
+                            <strong>Товар:</strong> <span id="operation_item_name"></span><br>
+                            <strong>Текущий остаток:</strong> <span id="operation_current_quantity"></span>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="operation_quantity" class="form-label">Количество</label>
+                            <input type="number" class="form-control" id="operation_quantity" min="1" required>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="submit" class="btn btn-primary" id="operationSubmit">Выполнить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно быстрого сканирования -->
+    <div class="modal fade" id="quickScanModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <span id="quickScanTitle">Операция с товаром</span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <h6 class="mb-2">Товар найден:</h6>
+                        <strong>Артикул:</strong> <span id="quickScanArticle"></span><br>
+                        <strong>Название:</strong> <span id="quickScanName"></span><br>
+                        <strong>Текущий остаток:</strong> <span id="quickScanQuantity"></span> шт.<br>
+                        <strong>Минимальный остаток:</strong> <span id="quickScanMinQuantity"></span> шт.
+                    </div>
+
+                    <div id="quickScanWarning" class="alert alert-warning" style="display: none;">
+                        <i class="bi bi-exclamation-triangle"></i> <span id="quickScanWarningText"></span>
+                    </div>
+
+                    <form id="quickScanForm">
+                        <input type="hidden" id="quickScanItemId">
+                        <input type="hidden" id="quickScanOperationType">
+
+                        <div class="mb-3">
+                            <label class="form-label">Тип операции</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="quickOperationType"
+                                       id="quickIncoming" value="incoming">
+                                <label class="btn btn-outline-success" for="quickIncoming">
+                                    <i class="bi bi-arrow-down"></i> Приход
+                                </label>
+
+                                <input type="radio" class="btn-check" name="quickOperationType"
+                                       id="quickOutgoing" value="outgoing">
+                                <label class="btn btn-outline-danger" for="quickOutgoing">
+                                    <i class="bi bi-arrow-up"></i> Списание
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="quickScanQuantityInput" class="form-label">Количество</label>
+                            <div class="input-group">
+                                <button class="btn btn-outline-secondary" type="button"
+                                        onclick="changeQuickQuantity(-10)">-10</button>
+                                <button class="btn btn-outline-secondary" type="button"
+                                        onclick="changeQuickQuantity(-1)">-1</button>
+                                <input type="number" class="form-control text-center"
+                                       id="quickScanQuantityInput" value="1" min="1" required>
+                                <button class="btn btn-outline-secondary" type="button"
+                                        onclick="changeQuickQuantity(1)">+1</button>
+                                <button class="btn btn-outline-secondary" type="button"
+                                        onclick="changeQuickQuantity(10)">+10</button>
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg" id="quickScanSubmit">
+                                <i class="bi bi-check-circle"></i> Выполнить операцию
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Подключаем скрипты -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    <script>
+        // Глобальные переменные
+        let codeReader = null;
+        let productsData = [];
+
+        // Загрузка товаров
+        async function loadProducts() {
+            try {
+                const response = await fetch('/api/items');
+                productsData = await response.json();
+
+                const tbody = document.getElementById('productsTableBody');
+                tbody.innerHTML = '';
+
+                const lowStockProducts = [];
+
+                productsData.forEach(product => {
+                    const row = tbody.insertRow();
+
+                    // Проверяем низкий остаток
+                    const isLowStock = product.quantity <= product.min_quantity;
+                    if (isLowStock) {
+                        row.classList.add('table-warning');
+                        lowStockProducts.push(product);
+                    }
+
+                    row.innerHTML = `
+                        <td>${product.article}</td>
+                        <td>${product.name}</td>
+                        <td>${product.type}</td>
+                        <td>
+                            <span class="${isLowStock ? 'text-danger fw-bold' : ''}">
+                                ${product.quantity}
+                                ${isLowStock ? '<i class="bi bi-exclamation-circle"></i>' : ''}
+                            </span>
+                        </td>
+                        <td>${product.min_quantity}</td>
+                        <td>${product.barcode}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="editProduct(${product.id})"
+                                    data-bs-toggle="tooltip" title="Редактировать">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-success" onclick="showOperation(${product.id}, 'incoming')"
+                                    data-bs-toggle="tooltip" title="Приход">
+                                <i class="bi bi-plus"></i>
+                            </button>
+                            <button class="btn btn-sm btn-warning" onclick="showOperation(${product.id}, 'outgoing')"
+                                    data-bs-toggle="tooltip" title="Списание">
+                                <i class="bi bi-dash"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteProduct(${product.id})"
+                                    data-bs-toggle="tooltip" title="Удалить">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    `;
+                });
+
+                // Показываем уведомление о низком остатке
+                if (lowStockProducts.length > 0) {
+                    showLowStockAlert(lowStockProducts);
+                }
+
+                // Инициализируем tooltips
+                var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                tooltipTriggerList.map(function (tooltipTriggerEl) {
+                    return new bootstrap.Tooltip(tooltipTriggerEl);
+                });
+
+            } catch (error) {
+                console.error('Ошибка загрузки товаров:', error);
+            }
+        }
+
+        // Показ уведомления о низком остатке
+        function showLowStockAlert(products) {
+            const alert = document.getElementById('lowStockAlert');
+            const list = document.getElementById('lowStockList');
+
+            list.innerHTML = products.map(p =>
+                `<li><strong>${p.article}</strong> - ${p.name}: осталось ${p.quantity} шт. (минимум: ${p.min_quantity})</li>`
+            ).join('');
+
+            alert.style.display = 'block';
+        }
+
+        // Загрузка статистики
+        async function loadStatistics() {
+            try {
+                const response = await fetch('/api/statistics');
+                const stats = await response.json();
+
+                document.getElementById('totalItems').textContent = stats.total_items;
+                document.getElementById('lowStock').textContent = stats.low_stock;
+                document.getElementById('incomingToday').textContent = stats.incoming_today;
+                document.getElementById('outgoingToday').textContent = stats.outgoing_today;
+            } catch (error) {
+                console.error('Ошибка загрузки статистики:', error);
+            }
+        }
+
+        // Загрузка операций
+        async function loadOperations() {
+            try {
+                const response = await fetch('/api/operations');
+                const operations = await response.json();
+
+                const tbody = document.getElementById('operationsTableBody');
+                tbody.innerHTML = '';
+
+                operations.forEach(op => {
+                    const row = tbody.insertRow();
+                    const date = new Date(op.created_at);
+                    const typeClass = op.type === 'incoming' ? 'text-success' : 'text-danger';
+                    const typeIcon = op.type === 'incoming' ? 'bi-arrow-down' : 'bi-arrow-up';
+                    const typeText = op.type === 'incoming' ? 'Приход' : 'Расход';
+
+                    row.innerHTML = `
+                        <td>${date.toLocaleString('ru-RU')}</td>
+                        <td class="${typeClass}">
+                            <i class="bi ${typeIcon}"></i> ${typeText}
+                        </td>
+                        <td>${op.item_article} - ${op.item_name}</td>
+                        <td>${op.quantity}</td>
+                        <td>${op.user}</td>
+                    `;
+                });
+            } catch (error) {
+                console.error('Ошибка загрузки операций:', error);
+            }
+        }
+
+        // Редактирование товара
+        async function editProduct(productId) {
+            try {
+                // Сначала ищем в загруженных данных
+                let product = productsData.find(p => p.id === productId);
+
+                // Если не нашли, загружаем с сервера
+                if (!product) {
+                    const response = await fetch(`/api/items/${productId}`);
+                    if (!response.ok) {
+                        throw new Error('Товар не найден');
+                    }
+                    product = await response.json();
+                }
+
+                // Заполняем форму
+                document.getElementById('edit_product_id').value = product.id;
+                document.getElementById('edit_article').value = product.article;
+                document.getElementById('edit_barcode').value = product.barcode || '-';
+                document.getElementById('edit_name').value = product.name;
+                document.getElementById('edit_type').value = product.type;
+                document.getElementById('edit_quantity').value = product.quantity;
+                document.getElementById('edit_min_quantity').value = product.min_quantity;
+
+                // Проверяем предупреждение о низком остатке
+                checkStockWarning();
+
+                // Показываем модальное окно
+                const modal = new bootstrap.Modal(document.getElementById('editProductModal'));
+                modal.show();
+
+            } catch (error) {
+                console.error('Ошибка загрузки данных товара:', error);
+                alert('Ошибка загрузки данных товара');
+            }
+        }
+
+        // Проверка предупреждения о низком остатке
+        function checkStockWarning() {
+            const quantity = parseInt(document.getElementById('edit_quantity').value);
+            const minQuantity = parseInt(document.getElementById('edit_min_quantity').value);
+            const warning = document.getElementById('stockWarning');
+
+            if (quantity <= minQuantity) {
+                warning.style.display = 'block';
+            } else {
+                warning.style.display = 'none';
+            }
+        }
+
+        // Удаление товара
+        async function deleteProduct(productId) {
+            if (!confirm('Вы уверены, что хотите удалить этот товар?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/items/${productId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    loadProducts();
+                    loadStatistics();
+                } else {
+                    alert('Ошибка удаления товара');
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                alert('Ошибка удаления товара');
+            }
+        }
+
+        // Показ модального окна операции
+        function showOperation(itemId, type) {
+            const item = productsData.find(p => p.id === itemId);
+
+            document.getElementById('operation_item_id').value = itemId;
+            document.getElementById('operation_type').value = type;
+            document.getElementById('operation_item_name').textContent = `${item.article} - ${item.name}`;
+            document.getElementById('operation_current_quantity').textContent = item.quantity;
+
+            const title = type === 'incoming' ? 'Приход товара' : 'Списание товара';
+            document.getElementById('operationModalTitle').textContent = title;
+
+            const submitBtn = document.getElementById('operationSubmit');
+            submitBtn.className = type === 'incoming' ? 'btn btn-success' : 'btn btn-warning';
+
+            const modal = new bootstrap.Modal(document.getElementById('operationModal'));
+            modal.show();
+        }
+
+        // Функция остановки сканера
+        function stopScanner() {
+            if (codeReader) {
+                codeReader.reset();
+            }
+            document.getElementById('scanner-video').style.display = 'none';
+            document.getElementById('startScanner').style.display = 'block';
+            document.getElementById('stopScanner').style.display = 'none';
+        }
+
+        // Обработка сканированного штрихкода
+        async function handleBarcodeScan(barcode) {
+            try {
+                const response = await fetch(`/api/items/barcode/${barcode}`);
+
+                if (response.ok) {
+                    const item = await response.json();
+
+                    // Получаем выбранную операцию
+                    const operationType = document.querySelector('input[name="scanOperation"]:checked').value;
+
+                    // Проверка при списании
+                    if (operationType === 'outgoing' && item.quantity === 0) {
+                        alert(`Товар "${item.name}" отсутствует на складе (0 шт.). Списание невозможно.`);
+                        return;
+                    }
+
+                    // Добавляем в список последних сканирований
+                    addToRecentScans(item, operationType);
+
+                    // Используем новое модальное окно
+                    showQuickScanModal(item, operationType);
+
+                } else {
+                    if (confirm(`Товар с штрихкодом ${barcode} не найден. Добавить новый товар?`)) {
+                        document.getElementById('barcode').value = barcode;
+                        const modal = new bootstrap.Modal(document.getElementById('addProductModal'));
+                        modal.show();
+                    }
+                }
+            } catch (error) {
+                console.error('Ошибка обработки штрихкода:', error);
+                alert('Ошибка обработки штрихкода');
+            }
+        }
+
+        // Добавление в список последних сканирований
+        function addToRecentScans(item, operationType) {
+            const recentScansDiv = document.getElementById('recentScans');
+            const recentScansList = document.getElementById('recentScansList');
+
+            recentScansDiv.style.display = 'block';
+
+            const listItem = document.createElement('li');
+            listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+
+            const typeIcon = operationType === 'incoming' ?
+                '<i class="bi bi-arrow-down text-success"></i>' :
+                '<i class="bi bi-arrow-up text-danger"></i>';
+
+            const typeText = operationType === 'incoming' ? 'Приход' : 'Списание';
+
+            listItem.innerHTML = `
+                <span>${typeIcon} ${item.article} - ${item.name}</span>
+                <span class="badge bg-secondary">${typeText}</span>
+            `;
+
+            // Добавляем в начало списка
+            recentScansList.insertBefore(listItem, recentScansList.firstChild);
+
+            // Оставляем только последние 5 записей
+            while (recentScansList.children.length > 5) {
+                recentScansList.removeChild(recentScansList.lastChild);
+            }
+        }
+
+        // Показать модальное окно быстрого сканирования
+        function showQuickScanModal(item, operationType) {
+            // Заполняем информацию о товаре
+            document.getElementById('quickScanArticle').textContent = item.article;
+            document.getElementById('quickScanName').textContent = item.name;
+            document.getElementById('quickScanQuantity').textContent = item.quantity;
+            document.getElementById('quickScanMinQuantity').textContent = item.min_quantity;
+            document.getElementById('quickScanItemId').value = item.id;
+
+            // Устанавливаем тип операции
+            if (operationType === 'incoming') {
+                document.getElementById('quickIncoming').checked = true;
+                document.getElementById('quickScanTitle').textContent = 'Приход товара';
+            } else {
+                document.getElementById('quickOutgoing').checked = true;
+                document.getElementById('quickScanTitle').textContent = 'Списание товара';
+            }
+
+            // Проверяем предупреждения
+            checkQuickScanWarnings(item, operationType);
+
+            // Сбрасываем количество
+            document.getElementById('quickScanQuantityInput').value = 1;
+
+            // Показываем модальное окно
+            const modal = new bootstrap.Modal(document.getElementById('quickScanModal'));
+            modal.show();
+        }
+
+        // Проверка предупреждений
+        function checkQuickScanWarnings(item, operationType) {
+            const warningDiv = document.getElementById('quickScanWarning');
+            const warningText = document.getElementById('quickScanWarningText');
+
+            warningDiv.style.display = 'none';
+
+            if (operationType === 'outgoing') {
+                if (item.quantity === 0) {
+                    warningText.textContent = 'Товар отсутствует на складе!';
+                    warningDiv.style.display = 'block';
+                    document.getElementById('quickScanSubmit').disabled = true;
+                    return;
+                } else if (item.quantity <= item.min_quantity) {
+                    warningText.textContent = 'Остаток товара уже ниже минимального!';
+                    warningDiv.style.display = 'block';
+                }
+            }
+
+            document.getElementById('quickScanSubmit').disabled = false;
+        }
+
+        // Изменение количества кнопками
+        function changeQuickQuantity(delta) {
+            const input = document.getElementById('quickScanQuantityInput');
+            const newValue = parseInt(input.value) + delta;
+            if (newValue >= 1) {
+                input.value = newValue;
+            }
+        }
+
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', () => {
+            loadProducts();
+            loadStatistics();
+
+            // Обработчики для форм
+            document.getElementById('addProductForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const data = {
+                    article: document.getElementById('article').value,
+                    name: document.getElementById('name').value,
+                    type: document.getElementById('type').value,
+                    barcode: document.getElementById('barcode').value,
+                    quantity: parseInt(document.getElementById('quantity').value) || 0,
+                    min_quantity: parseInt(document.getElementById('min_quantity').value) || 10
+                };
+
+                try {
+                    const response = await fetch('/api/items', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(data)
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        bootstrap.Modal.getInstance(document.getElementById('addProductModal')).hide();
+                        document.getElementById('addProductForm').reset();
+                        loadProducts();
+                        loadStatistics();
+                    } else {
+                        alert(result.error || 'Ошибка добавления товара');
+                    }
+                } catch (error) {
+                    console.error('Ошибка:', error);
+                    alert('Ошибка добавления товара');
+                }
+            });
+
+            document.getElementById('editProductForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const productId = document.getElementById('edit_product_id').value;
+                const data = {
+                    name: document.getElementById('edit_name').value,
+                    type: document.getElementById('edit_type').value,
+                    min_quantity: parseInt(document.getElementById('edit_min_quantity').value)
+                };
+
+                try {
+                    const response = await fetch(`/api/items/${productId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(data)
+                    });
+
+                    if (response.ok) {
+                        bootstrap.Modal.getInstance(document.getElementById('editProductModal')).hide();
+                        loadProducts();
+                        loadStatistics();
+                    } else {
+                        alert('Ошибка обновления товара');
+                    }
+                } catch (error) {
+                    console.error('Ошибка:', error);
+                    alert('Ошибка обновления товара');
+                }
+            });
+
+            document.getElementById('operationForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const data = {
+                    item_id: parseInt(document.getElementById('operation_item_id').value),
+                    type: document.getElementById('operation_type').value,
+                    quantity: parseInt(document.getElementById('operation_quantity').value),
+                    user: 'Администратор'
+                };
+
+                try {
+                    const response = await fetch('/api/operations', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(data)
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        bootstrap.Modal.getInstance(document.getElementById('operationModal')).hide();
+                        document.getElementById('operationForm').reset();
+                        loadProducts();
+                        loadStatistics();
+                        loadOperations();
+
+                        // Показываем уведомление если остаток стал низким
+                        if (result.is_low_stock) {
+                            alert(`Внимание! Остаток товара стал ниже минимального (${result.new_quantity} шт.)`);
+                        }
+                    } else {
+                        alert(result.error || 'Ошибка выполнения операции');
+                    }
+                } catch (error) {
+                    console.error('Ошибка:', error);
+                    alert('Ошибка выполнения операции');
+                }
+            });
+
+            document.getElementById('quickScanForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const data = {
+                    item_id: parseInt(document.getElementById('quickScanItemId').value),
+                    type: document.querySelector('input[name="quickOperationType"]:checked').value,
+                    quantity: parseInt(document.getElementById('quickScanQuantityInput').value),
+                    user: 'Администратор (Сканер)'
+                };
+
+                try {
+                    const response = await fetch('/api/operations', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(data)
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        bootstrap.Modal.getInstance(document.getElementById('quickScanModal')).hide();
+
+                        // Показываем результат
+                        const operationText = data.type === 'incoming' ? 'добавлено' : 'списано';
+                        alert(`Успешно ${operationText} ${data.quantity} шт. Новый остаток: ${result.new_quantity} шт.`);
+
+                        // Обновляем данные
+                        loadProducts();
+                        loadStatistics();
+                        loadOperations();
+
+                        // Предупреждение о низком остатке
+                        if (result.is_low_stock) {
+                            setTimeout(() => {
+                                alert(`⚠️ Внимание! Остаток товара стал ниже минимального (${result.new_quantity} шт.)`);
+                            }, 500);
+                        }
+                    } else {
+                        alert(result.error || 'Ошибка выполнения операции');
+                    }
+                } catch (error) {
+                    console.error('Ошибка:', error);
+                    alert('Ошибка выполнения операции');
+                }
+            });
+
+            // Обработчики для сканера
+            document.getElementById('startScanner').addEventListener('click', async () => {
+                try {
+                    if (!codeReader) {
+                        codeReader = new ZXing.BrowserMultiFormatReader();
+                    }
+
+                    const videoElement = document.getElementById('scanner-video');
+
+                    videoElement.style.display = 'block';
+                    document.getElementById('startScanner').style.display = 'none';
+                    document.getElementById('stopScanner').style.display = 'block';
+
+                    codeReader.decodeFromVideoDevice(null, videoElement, async (result, err) => {
+                        if (result) {
+                            const barcode = result.text;
+                            await handleBarcodeScan(barcode);
+                            stopScanner();
+                        }
+                    });
+                } catch (err) {
+                    console.error('Ошибка запуска сканера:', err);
+                    alert('Не удалось запустить камеру');
+                }
+            });
+
+            document.getElementById('stopScanner').addEventListener('click', stopScanner);
+
+            document.getElementById('manualBarcode').addEventListener('keypress', async (e) => {
+                if (e.key === 'Enter') {
+                    const barcode = e.target.value.trim();
+                    if (barcode) {
+                        await handleBarcodeScan(barcode);
+                        e.target.value = '';
+                    }
+                }
+            });
+
+            document.getElementById('manualBarcodeSubmit').addEventListener('click', async () => {
+                const barcode = document.getElementById('manualBarcode').value.trim();
+                if (barcode) {
+                    await handleBarcodeScan(barcode);
+                    document.getElementById('manualBarcode').value = '';
+                }
+            });
+
+            document.getElementById('showOperations').addEventListener('click', () => {
+                const card = document.getElementById('operationsCard');
+                if (card.style.display === 'none') {
+                    card.style.display = 'block';
+                    loadOperations();
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            document.getElementById('edit_min_quantity').addEventListener('input', checkStockWarning);
+
+            // Обработчики для переключателей режима сканирования
+            document.querySelectorAll('input[name="scanOperation"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    const currentMode = document.getElementById('currentMode');
+                    if (e.target.value === 'incoming') {
+                        currentMode.textContent = 'ПРИХОД';
+                        currentMode.className = 'fw-bold text-success';
+                    } else {
+                        currentMode.textContent = 'СПИСАНИЕ';
+                        currentMode.className = 'fw-bold text-danger';
+                    }
+                });
+            });
+
+            // Обработчики для модального окна быстрого сканирования
+            document.querySelectorAll('input[name="quickOperationType"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    const itemId = document.getElementById('quickScanItemId').value;
+                    const item = productsData.find(p => p.id === parseInt(itemId));
+                    if (item) {
+                        checkQuickScanWarnings(item, e.target.value);
+                    }
+
+                    const title = e.target.value === 'incoming' ? 'Приход товара' : 'Списание товара';
+                    document.getElementById('quickScanTitle').textContent = title;
+                });
+            });
+
+            // Обновляем данные каждые 30 секунд
+            setInterval(() => {
+                loadProducts();
+                loadStatistics();
+            }, 30000);
+        });
+    </script>
+</body>
+</html>
